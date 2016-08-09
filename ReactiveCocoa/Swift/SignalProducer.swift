@@ -1736,29 +1736,29 @@ extension SignalProducer {
 			let replayBuffer = ReplayBuffer<Value>()
 			var replayValues: [Value] = []
 			var replayToken: RemovalToken?
-			var terminationEvent: Event<Value, Error>? = state.modify { state in
-				replayValues = state.values
+			var terminationEvent: Event<Value, Error>? = state.modify {
+				replayValues = $0.values
 				if replayValues.isEmpty {
-					token = state.observers?.insert(observer)
+					token = $0.observers?.insert(observer)
 				} else {
-					replayToken = state.replayBuffers.insert(replayBuffer)
+					replayToken = $0.replayBuffers.insert(replayBuffer)
 				}
-				return state.terminationEvent
+				return $0.terminationEvent
 			}
 
 			while !replayValues.isEmpty {
 				replayValues.forEach(observer.sendNext)
 
-				terminationEvent = state.modify { state in
+				terminationEvent = state.modify {
 					replayValues = replayBuffer.values
 					replayBuffer.values = []
 					if replayValues.isEmpty {
 						if let replayToken = replayToken {
-							state.replayBuffers.remove(using: replayToken)
+							$0.replayBuffers.remove(using: replayToken)
 						}
-						token = state.observers?.insert(observer)
+						token = $0.observers?.insert(observer)
 					}
-					return state.terminationEvent
+					return $0.terminationEvent
 				}
 			}
 
@@ -1768,8 +1768,8 @@ extension SignalProducer {
 
 			if let token = token {
 				disposable += {
-					state.modify { state in
-						state.observers?.remove(using: token)
+					state.modify {
+						$0.observers?.remove(using: token)
 					}
 				}
 			}
@@ -1777,18 +1777,17 @@ extension SignalProducer {
 
 		let bufferingObserver: Signal<Value, Error>.Observer = Observer { event in
 			let observers: Bag<Signal<Value, Error>.Observer>? = state.modify { state in
-				let observers = state.observers
-
-				if let value = event.value {
-					state.add(value, upTo: capacity)
-				} else {
-					// Disconnect all observers and prevent future
-					// attachments.
-					state.terminationEvent = event
-					state.observers = nil
+				defer {
+					if let value = event.value {
+						state.add(value, upTo: capacity)
+					} else {
+						// Disconnect all observers and prevent future
+						// attachments.
+						state.terminationEvent = event
+						state.observers = nil
+					}
 				}
-
-				return observers
+				return state.observers
 			}
 
 			observers?.forEach { $0.action(event) }
